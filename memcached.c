@@ -138,6 +138,9 @@ void *ext_storage;
 static conn *listen_conn = NULL;
 static int max_fds;
 static struct event_base *main_base;
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+static volatile time_t adjusted_process_started; /* process_started adjusted by realtime-monotonic_time offset */
+#endif
 
 enum transmit_result {
     TRANSMIT_COMPLETE,   /** All done writing. */
@@ -188,9 +191,18 @@ static rel_time_t realtime(const time_t exptime) {
            underflow and wrap around to some large value way in the
            future, effectively making items expiring in the past
            really expiring never */
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+        if (monotonic) {
+            time_t t = adjusted_process_started;
+            if (exptime <= t)
+                return (rel_time_t)1;
+            return (rel_time_t)(exptime - t);
+        }
+#else
         if (exptime <= process_started)
             return (rel_time_t)1;
         return (rel_time_t)(exptime - process_started);
+#endif
     } else {
         return (rel_time_t)(exptime + current_time);
     }
@@ -206,6 +218,9 @@ static void stats_init(void) {
        like 'settings.oldest_live' which act as booleans as well as
        values are now false in boolean context... */
     process_started = time(0) - ITEM_UPDATE_INTERVAL - 2;
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    adjusted_process_started = process_started;
+#endif
     stats_prefix_init();
 }
 
@@ -6185,6 +6200,7 @@ static void clock_handler(const int fd, const short which, void *arg) {
         if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
             return;
         current_time = (rel_time_t) (ts.tv_sec - monotonic_start);
+        adjusted_process_started = time(0) - current_time;
         return;
     }
 #endif
