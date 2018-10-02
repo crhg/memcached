@@ -139,6 +139,7 @@ static conn *listen_conn = NULL;
 static int max_fds;
 static struct event_base *main_base;
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+static bool monotonic = false;
 static volatile time_t adjusted_process_started; /* process_started adjusted by realtime-monotonic_time offset */
 #endif
 
@@ -198,11 +199,10 @@ static rel_time_t realtime(const time_t exptime) {
                 return (rel_time_t)1;
             return (rel_time_t)(exptime - t);
         }
-#else
+#endif
         if (exptime <= process_started)
             return (rel_time_t)1;
         return (rel_time_t)(exptime - process_started);
-#endif
     } else {
         return (rel_time_t)(exptime + current_time);
     }
@@ -6166,7 +6166,6 @@ static void clock_handler(const int fd, const short which, void *arg) {
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
     static bool initialized = false;
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
-    static bool monotonic = false;
     static time_t monotonic_start;
 #endif
 
